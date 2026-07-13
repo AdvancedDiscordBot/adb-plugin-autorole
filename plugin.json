@@ -1,0 +1,19 @@
+{
+	"name": "adb-plugin-autorole",
+	"displayName": "Autorole Plugin",
+	"version": "1.0.0",
+	"description": "Automatic role assignment (join, bot, level, time-based delayed and remove-after) for Advanced Discord Bot.",
+	"author": "DeadIndian",
+	"license": "AGPL-3.0-only",
+	"discordPermissions": ["SendMessages", "ManageRoles"],
+	"configSchema": {
+		"type": "object",
+		"properties": {
+			"enabled": {
+				"type": "boolean",
+				"default": false,
+				"description": "Whether autorole is enabled for this server"
+			}
+		}
+	}
+}
