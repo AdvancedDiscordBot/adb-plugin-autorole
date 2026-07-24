@@ -1,19 +1,49 @@
 {
 	"name": "adb-plugin-autorole",
 	"displayName": "Autorole Plugin",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "Automatic role assignment (join, bot, level, time-based delayed and remove-after) for Advanced Discord Bot.",
 	"author": "DeadIndian",
 	"license": "AGPL-3.0-only",
+	"main": "index.js",
+	"requiresRestart": false,
+	"manifestVersion": 2,
+	"process": {
+		"model": "pooled",
+		"maxExecutionMs": 5000,
+		"memoryMb": 128,
+		"persistentReason": null
+	},
+	"capabilities": {
+		"storage": ["own-collection"],
+		"discord": ["SendMessages", "ManageRoles", "GuildInfo"],
+		"hooks": ["subscribe"]
+	},
+	"permissions": {
+		"storage": ["own-collection"],
+		"discord": ["SendMessages", "ManageRoles", "GuildInfo"],
+		"hooks": ["subscribe"],
+		"network": { "outbound": [] },
+		"filesystem": { "read": [], "write": [] },
+		"childProcess": false,
+		"nativeAddons": false
+	},
+	"declaredDependencies": [],
 	"discordPermissions": ["SendMessages", "ManageRoles"],
+	"engines": {
+		"core": ">=2.0.0",
+		"plugins": { "administration": ">=2.0.0" }
+	},
+	"settings": {
+		"commandPermissions": true,
+		"schema": [
+			{ "key": "enabled", "type": "boolean", "label": "Enable autorole", "default": false }
+		]
+	},
 	"configSchema": {
 		"type": "object",
 		"properties": {
-			"enabled": {
-				"type": "boolean",
-				"default": false,
-				"description": "Whether autorole is enabled for this server"
-			}
+			"enabled": { "type": "boolean", "default": false, "description": "Whether autorole is enabled for this server" }
 		}
 	}
 }
