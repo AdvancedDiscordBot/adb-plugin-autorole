@@ -1,7 +1,7 @@
 {
 	"name": "adb-plugin-autorole",
 	"displayName": "Autorole Plugin",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"description": "Automatic role assignment (join, bot, level, time-based delayed and remove-after) for Advanced Discord Bot.",
 	"author": "DeadIndian",
 	"license": "AGPL-3.0-only",
@@ -38,6 +38,25 @@
 		"commandPermissions": true,
 		"schema": [
 			{ "key": "enabled", "type": "boolean", "label": "Enable autorole", "default": false }
+		]
+	},
+	"webUi": {
+		"memberPages": [
+			{
+				"path": "/me/pending-roles",
+				"label": "My Pending Roles",
+				"icon": "Hourglass",
+				"source": { "model": "pendingRoleAction", "scope": "member", "sort": { "executeAt": 1 }, "limit": 50 },
+				"view": {
+					"type": "table",
+					"empty": "You have no pending role changes in this server.",
+					"columns": [
+						{ "field": "roleId", "label": "Role" },
+						{ "field": "action", "label": "Change" },
+						{ "field": "executeAt", "label": "Takes Effect" }
+					]
+				}
+			}
 		]
 	},
 	"configSchema": {
