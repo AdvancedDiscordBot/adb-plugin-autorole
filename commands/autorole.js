@@ -91,7 +91,7 @@ module.exports = {
 
 	execute: async (interaction, ctx) => {
 		// Ensure member has permission
-		if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+		if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
 			return interaction.reply({
 				content: "❌ You need the **Manage Server** permission to use this command.",
 				ephemeral: true,
@@ -151,6 +151,8 @@ module.exports = {
 					ephemeral: true,
 				});
 			}
+			const PendingRoleAction = ctx.defineModel("pendingRoleAction", require("../models/pendingRoleAction"));
+			await PendingRoleAction.deleteMany({ guildId: interaction.guildId, roleId });
 
 			return interaction.reply({
 				content: `✅ Removed autorole rule for <@&${roleId}>.`,

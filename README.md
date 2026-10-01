@@ -1,17 +1,30 @@
-# adb-plugin-template
+# adb-plugin-autorole
 
-Clean starting point for building an external (npm-installable) plugin for
+Automatic join, bot, level, delayed and temporary roles for
 [Advanced Discord Bot](https://github.com/AdvancedDiscordBot/Advanced-Discord-Bot) (ADB).
 
-See `adb-plugin-reminders` (sibling repo) for a complete, working example built from this template.
+Configure rules with `/autorole` and enable them with `/autorole enable`. The
+`enabled` setting defaults to false. Disabling pauses pending actions; removing a
+rule cancels its pending actions. Transient Discord failures remain queued for a
+later attempt rather than being treated as successful changes.
 
-## Use this template
+## Runtime trust
 
-1. Copy this folder / use as a GitHub template repo, rename it to `adb-plugin-<your-name>`.
-2. Find-and-replace `adb-plugin-REPLACE_ME` with your real package name in `plugin.json` and `package.json`.
-3. **Naming rule**: the package name (and the folder name, if run as a local plugin) must start with `adb-plugin-` — that's the exact string `PluginManager` scans `node_modules/` for.
-4. Implement your feature in `index.js` / `commands/` / `models/`.
-5. Update this README.
+The manifest explicitly declares `system:raw-client` in both `capabilities` and
+`permissions`, with a persistent process. This uses ADB's owner-approved direct
+loading contract, as used by moderation. Do not disable global plugin isolation.
+
+This is elevated host trust: the plugin runs in the bot's main process with access
+to the raw Discord client, host database and environment. The narrower permission
+lists are not a sandbox. ADB's platform per-guild plugin toggle does not apply to
+raw-client plugins; the plugin's own `enabled` setting controls behavior, not host
+access. Only install it when the bot owner trusts its code.
+
+Level rewards optionally read `plugin_adb-plugin-levels_Level` through an own
+model's host connection. No collection name is guessed, and a separate mongoose
+installation from `npm link` is not used for that read. Missing Levels models or
+records grant no level rewards and do not block other join rules. Both rejoining
+members and level-up hooks receive all configured rewards up to their level.
 
 ## Plugin contract
 
@@ -31,7 +44,7 @@ module.exports = { load };
 | `ctx.client` | Raw discord.js `Client` — full Discord API access |
 | `ctx.db` | Core `Database` singleton (server config, user profiles, etc.) |
 | `ctx.commands` | Live `Collection` of all registered commands |
-| `ctx.registerCommand(command)` | Register a `{ data, execute }` slash command |
+| `ctx.registerCommand(command)` | Register `{ data, execute(interaction, client) }`; inject `ctx` through a closure when needed |
 | `ctx.overrideCommand(name, (originalExecute, command) => newExecute)` | Wrap an existing command (yours or core's) |
 | `ctx.registerEvent(eventName, handler, { once? })` | Listen to a discord.js client event |
 | `ctx.defineModel(modelName, mongooseSchema)` | Compile a Mongo model namespaced as `plugin_<your-plugin-name>_<modelName>` |

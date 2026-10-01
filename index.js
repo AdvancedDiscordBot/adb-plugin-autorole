@@ -1,5 +1,4 @@
 const cron = require("node-cron");
-const mongoose = require("mongoose");
 
 const autoroleCommand = require("./commands/autorole");
 const autoroleConfigSchema = require("./models/autoroleConfig");
@@ -11,7 +10,10 @@ async function load(ctx) {
 	const PendingRoleAction = ctx.defineModel("pendingRoleAction", pendingRoleActionSchema);
 
 	// --- Register slash command -----------------------------------------
-	ctx.registerCommand(autoroleCommand);
+	ctx.registerCommand({
+		data: autoroleCommand.data,
+		execute: (interaction) => autoroleCommand.execute(interaction, ctx),
+	});
 
 	// --- Listen to guildMemberAdd Discord event -------------------------------
 	ctx.registerEvent("guildMemberAdd", async (member) => {
@@ -49,16 +51,17 @@ async function load(ctx) {
 			// 2. Assign level roles based on existing XP level
 			let currentLevel = 0;
 			try {
-				if (mongoose.connection && mongoose.connection.db) {
-					const levelDoc = await mongoose.connection.db
-						.collection("plugin_adb-plugin-levels_level")
-						.findOne({ guildId: member.guild.id, userId: member.id });
+				// Use the host connection and registered model, not a guessed collection
+				// or this package's potentially separate npm-linked mongoose instance.
+				const Level = AutoroleConfig.db?.models?.["plugin_adb-plugin-levels_Level"];
+				if (Level) {
+					const levelDoc = await Level.findOne({ guildId: member.guild.id, userId: member.id });
 					if (levelDoc) {
 						currentLevel = levelDoc.level ?? 0;
 					}
 				}
 			} catch (err) {
-				ctx.logger.warn(`Could not read level from plugin_adb-plugin-levels_level: ${err.message}`);
+				ctx.logger.warn(`Could not read the registered Levels model: ${err.message}`);
 			}
 
 			if (currentLevel > 0) {
@@ -117,19 +120,24 @@ async function load(ctx) {
 	});
 
 	// --- Hook into level up events (integrate with XP system) ----------------
-	ctx.hooks.on("onLevelUp", async ({ user, newLevel, guild }) => {
+	const offLevelUp = ctx.hooks.on("onLevelUp", async ({ user, newLevel, guild } = {}) => {
 		try {
-			const config = await ctx.db.getPluginConfig(guild.id, "adb-plugin-autorole");
+			const guildId = guild?.id;
+			const userId = user?.id;
+			if (!guildId || !userId || !Number.isFinite(newLevel) || newLevel <= 0) return;
+			const config = await ctx.db.getPluginConfig(guildId, "adb-plugin-autorole");
 			if (!config?.data?.enabled) return;
 
-			const member = await guild.members.fetch(user.id).catch(() => null);
+			guild = ctx.client.guilds.cache.get(guildId) || (guild?.members?.fetch ? guild : await ctx.client.guilds.fetch(guildId));
+			if (!guild || guild.available === false) return;
+			const member = await guild.members.fetch(userId);
 			if (!member) return;
 
-			// Find rules for this exact level
+			// Match rejoin behavior, including rewards skipped by a multi-level jump.
 			const levelRules = await AutoroleConfig.find({
 				guildId: guild.id,
 				type: "level",
-				level: newLevel,
+				level: { $lte: newLevel },
 			});
 
 			for (const rule of levelRules) {
@@ -151,9 +159,11 @@ async function load(ctx) {
 	});
 
 	// Clean up task when plugin is unloaded
-	ctx.hooks.on("onPluginUnload", async ({ pluginName }) => {
+	const offUnload = ctx.hooks.on("onPluginUnload", async ({ pluginName }) => {
 		if (pluginName === "adb-plugin-autorole") {
 			task.stop();
+			offLevelUp();
+			offUnload();
 		}
 	});
 
@@ -167,13 +177,6 @@ async function processPendingRoleActions(ctx, PendingRoleAction) {
 
 		for (const action of actions) {
 			try {
-				const guild = ctx.client.guilds.cache.get(action.guildId);
-				if (!guild) {
-					// Guild is no longer accessible, remove task
-					await PendingRoleAction.deleteOne({ _id: action._id });
-					continue;
-				}
-
 				// Check if plugin is enabled
 				const config = await ctx.db.getPluginConfig(action.guildId, "adb-plugin-autorole");
 				if (!config?.data?.enabled) {
@@ -181,38 +184,44 @@ async function processPendingRoleActions(ctx, PendingRoleAction) {
 					continue;
 				}
 
-				const member = await guild.members.fetch(action.userId).catch(() => null);
+				const guild = ctx.client.guilds.cache.get(action.guildId) || await ctx.client.guilds.fetch(action.guildId);
+				if (!guild) {
+					await PendingRoleAction.deleteOne({ _id: action._id });
+					continue;
+				}
+				if (guild.available === false) continue;
+
+				const member = await guild.members.fetch(action.userId);
 				if (!member) {
 					// Member left server, remove task
 					await PendingRoleAction.deleteOne({ _id: action._id });
 					continue;
 				}
 
-				const role = guild.roles.cache.get(action.roleId);
+				const role = guild.roles.cache.get(action.roleId) || await guild.roles.fetch(action.roleId);
 				if (!role) {
 					// Role was deleted, remove task
 					await PendingRoleAction.deleteOne({ _id: action._id });
 					continue;
 				}
 
+				// Singular role PUT/DELETE calls are idempotent; the gateway cache can lag behind them.
 				if (action.action === "add") {
-					if (!member.roles.cache.has(role.id)) {
-						await member.roles.add(role).catch((err) => {
-							ctx.logger.error(`Failed to assign delayed role ${role.id} to ${member.id}:`, err);
-						});
-					}
+					await member.roles.add(role);
 				} else if (action.action === "remove") {
-					if (member.roles.cache.has(role.id)) {
-						await member.roles.remove(role).catch((err) => {
-							ctx.logger.error(`Failed to remove role ${role.id} from ${member.id}:`, err);
-						});
-					}
+					await member.roles.remove(role);
 				}
 
 				// Clean up processed task
 				await PendingRoleAction.deleteOne({ _id: action._id });
 
 			} catch (actionErr) {
+				// Only authoritative Unknown Guild/Member/Role errors cancel work.
+				// Transient API and permission failures remain queued for the next tick.
+				if ([10004, 10007, 10011].includes(actionErr.code)) {
+					await PendingRoleAction.deleteOne({ _id: action._id });
+					continue;
+				}
 				ctx.logger.error(`Error processing pending role action ${action._id}:`, actionErr);
 			}
 		}

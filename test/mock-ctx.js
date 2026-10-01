@@ -1,5 +1,7 @@
 "use strict";
 
+const { EventEmitter } = require("node:events");
+
 /**
  * mock-ctx.js — a bot-faithful, in-memory stand-in for the real ADB
  * PluginContext (core/PluginContext.js) + HookBus (core/HookBus.js) +
@@ -222,6 +224,8 @@ function createMockCtx({ pluginName = "adb-plugin-REPLACE_ME" } = {}) {
 	const registeredCommands = new Map();
 	const registeredEvents = new Map();
 	const models = new Map();
+	const connection = { models: Object.create(null) };
+	const eventResults = [];
 
 	// --- HookBus mirror ---
 	const handlers = new Map();
@@ -283,30 +287,28 @@ function createMockCtx({ pluginName = "adb-plugin-REPLACE_ME" } = {}) {
 			if (!pluginConfigs.has(key)) {
 				pluginConfigs.set(key, { guildId, pluginName: pName, data: {} });
 			}
-			return pluginConfigs.get(key);
+			return JSON.parse(JSON.stringify(pluginConfigs.get(key)));
 		},
 		async updatePluginConfig(guildId, pName, data) {
 			const key = `${guildId}:${pName}`;
 			// real bot does $set: { data } — a full replace of `data`
-			const config = { guildId, pluginName: pName, data };
+			const config = { guildId, pluginName: pName, data: JSON.parse(JSON.stringify(data)) };
 			pluginConfigs.set(key, config);
-			return config;
+			return JSON.parse(JSON.stringify(config));
 		},
 		async getAllPluginConfigs(guildId) {
-			return [...pluginConfigs.values()].filter((c) => c.guildId === guildId);
+			return JSON.parse(JSON.stringify([...pluginConfigs.values()].filter((c) => c.guildId === guildId)));
 		},
 	};
 
 	// --- Fake discord.js client ---
 	const clientCommands = new Map();
-	const client = {
+	const client = Object.assign(new EventEmitter(), {
 		commands: clientCommands,
 		guilds: { cache: new Map() },
 		channels: { fetch: async () => null, cache: new Map() },
 		user: { id: "mock-bot-id" },
-		once: () => {},
-		on: () => {},
-	};
+	});
 
 	// --- ctx methods (bot-faithful) ---
 	function registerCommand(command) {
@@ -324,10 +326,20 @@ function createMockCtx({ pluginName = "adb-plugin-REPLACE_ME" } = {}) {
 	function registerEvent(name, handler, options = {}) {
 		if (!registeredEvents.has(name)) registeredEvents.set(name, []);
 		registeredEvents.get(name).push({ handler, options });
+		client[options.once ? "once" : "on"](name, (...args) => {
+			const result = handler(...args, client);
+			eventResults.push(Promise.resolve(result));
+			return result;
+		});
 	}
 	function defineModel(modelName, schema) {
 		const fullName = `plugin_${pluginName}_${modelName}`;
-		if (!models.has(fullName)) models.set(fullName, createFakeModel(fullName, schema));
+		if (!models.has(fullName)) {
+			const model = createFakeModel(fullName, schema);
+			model.db = connection;
+			connection.models[fullName] = model;
+			models.set(fullName, model);
+		}
 		return models.get(fullName);
 	}
 
@@ -343,7 +355,7 @@ function createMockCtx({ pluginName = "adb-plugin-REPLACE_ME" } = {}) {
 		defineModel,
 		models: null, // writable, like the real ctx
 		hooks,
-		config: { env: process.env },
+		config: { env: {} },
 		logger,
 	};
 	Object.keys(ctx).forEach((k) => {
@@ -356,9 +368,8 @@ function createMockCtx({ pluginName = "adb-plugin-REPLACE_ME" } = {}) {
 
 	// --- test helper: trigger a registered event ---
 	async function emitEvent(name, ...args) {
-		for (const { handler } of registeredEvents.get(name) || []) {
-			await handler(...args, client);
-		}
+		client.emit(name, ...args);
+		await Promise.all(eventResults.splice(0));
 	}
 
 	return {

@@ -6,22 +6,27 @@
 	"author": "DeadIndian",
 	"license": "AGPL-3.0-only",
 	"main": "index.js",
-	"requiresRestart": false,
+	"requiresRestart": true,
+	"isolation": false,
 	"manifestVersion": 2,
 	"process": {
-		"model": "pooled",
-		"maxExecutionMs": 5000,
-		"memoryMb": 128,
-		"persistentReason": null
+		"model": "persistent",
+		"maxExecutionMs": 15000,
+		"memoryMb": 256,
+		"persistentReason": "Runs un-isolated (system:raw-client) for live guild/member role assignment, a recurring pending-action processor, and read-only access to the host-registered Levels model. These operations require full Discord.js objects and the host database connection, not serialized worker payloads. Requires owner-approved full host trust."
 	},
 	"capabilities": {
+		"system": ["raw-client"],
 		"storage": ["own-collection"],
 		"discord": ["SendMessages", "ManageRoles", "GuildInfo"],
+		"scheduler": ["cron"],
 		"hooks": ["subscribe"]
 	},
 	"permissions": {
+		"system": ["raw-client"],
 		"storage": ["own-collection"],
 		"discord": ["SendMessages", "ManageRoles", "GuildInfo"],
+		"scheduler": ["cron"],
 		"hooks": ["subscribe"],
 		"network": { "outbound": [] },
 		"filesystem": { "read": [], "write": [] },
