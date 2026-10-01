@@ -1,6 +1,6 @@
 {
 	"name": "adb-plugin-autorole",
-	"displayName": "Autorole Plugin",
+	"displayName": "Autorole",
 	"version": "1.3.0",
 	"description": "Automatic role assignment (join, bot, level, time-based delayed and remove-after) for Advanced Discord Bot.",
 	"author": "DeadIndian",

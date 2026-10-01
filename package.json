@@ -1,7 +1,7 @@
 {
   "name": "adb-plugin-autorole",
   "version": "1.3.0",
-  "description": "One-line description of what this plugin does.",
+  "description": "Automatic role assignment for ADB: join, bot, XP level, delayed, and remove-after rules.",
   "main": "index.js",
   "files": [
     "index.js",
